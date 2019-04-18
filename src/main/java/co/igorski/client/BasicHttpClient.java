@@ -34,14 +34,7 @@ public class BasicHttpClient implements WebClient {
         URL url;
         url = new URL(target);
 
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setReadTimeout(15000);
-        conn.setConnectTimeout(15000);
-        conn.setRequestMethod("POST");
-        conn.setDoInput(true);
-        conn.setDoOutput(true);
-        conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
-
+        HttpURLConnection conn = getPostConnection(url, "application/x-www-form-urlencoded");
         try (OutputStream os = conn.getOutputStream();
              BufferedWriter writer = new BufferedWriter(
                      new OutputStreamWriter(os, "UTF-8"))) {
@@ -62,13 +55,7 @@ public class BasicHttpClient implements WebClient {
         URL url;
         url = new URL(target);
 
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setReadTimeout(15000);
-        conn.setConnectTimeout(15000);
-        conn.setRequestMethod("POST");
-        conn.setDoInput(true);
-        conn.setDoOutput(true);
-        conn.setRequestProperty("Content-Type", "application/json");
+        HttpURLConnection conn = getPostConnection(url, "application/json");
 
         try (OutputStream os = conn.getOutputStream(); BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(os, "UTF-8"))) {
             writer.write(body);
@@ -76,6 +63,17 @@ public class BasicHttpClient implements WebClient {
         }
 
         return getStringFromInputStream(conn.getInputStream());
+    }
+
+    private HttpURLConnection getPostConnection(URL url, String s) throws IOException {
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setReadTimeout(15000);
+        conn.setConnectTimeout(15000);
+        conn.setRequestMethod("POST");
+        conn.setDoInput(true);
+        conn.setDoOutput(true);
+        conn.setRequestProperty("Content-Type", s);
+        return conn;
     }
 
     private String getStringFromInputStream(InputStream inputStream) {
