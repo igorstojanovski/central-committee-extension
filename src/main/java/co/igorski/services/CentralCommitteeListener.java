@@ -1,0 +1,219 @@
+package co.igorski.services;
+
+import co.igorski.client.ApacheHttpClient;
+import co.igorski.client.WebClient;
+import co.igorski.configuration.Configuration;
+import co.igorski.configuration.PropertiesConfigurationReader;
+import co.igorski.exceptions.SnitcherException;
+import co.igorski.model.Outcome;
+import co.igorski.model.Status;
+import co.igorski.model.TestModel;
+import co.igorski.model.TestRun;
+import co.igorski.model.User;
+import org.junit.platform.engine.TestDescriptor;
+import org.junit.platform.engine.TestExecutionResult;
+import org.junit.platform.engine.TestSource;
+import org.junit.platform.engine.reporting.ReportEntry;
+import org.junit.platform.engine.support.descriptor.MethodSource;
+import org.junit.platform.launcher.TestExecutionListener;
+import org.junit.platform.launcher.TestIdentifier;
+import org.junit.platform.launcher.TestPlan;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.StringJoiner;
+
+/**
+ * The central service that will act as a facade.
+ */
+public class CentralCommitteeListener implements TestExecutionListener {
+
+    private static final Logger LOG = LoggerFactory.getLogger(CentralCommitteeListener.class);
+    private static final WebClient HTTP_CLIENT = new ApacheHttpClient();
+    private static final Configuration CONFIGURATION = new Configuration(new PropertiesConfigurationReader()
+            .readProperties("application.properties"));
+    private final LoginService loginService;
+    private final EventService eventService;
+    private boolean skipExecution;
+    private TestRun testRun;
+    private Map<String, TestModel> tests;
+
+    public CentralCommitteeListener() {
+        this(new LoginService(CONFIGURATION, HTTP_CLIENT), new EventService(HTTP_CLIENT, CONFIGURATION));
+    }
+
+    /**
+     * Needs a login service and an event service.
+     *
+     * @param loginService handles the login
+     * @param eventService handles sending the events
+     */
+    public CentralCommitteeListener(LoginService loginService, EventService eventService) {
+        this.loginService = loginService;
+        this.eventService = eventService;
+    }
+
+    /**
+     * Has two main functions:<br>
+     * 1. to login
+     * 2. to create a list of all results and send it to {@link EventService#testPlanStarted(Map, User)}
+     *
+     * @param testPlan the test plan retrieved from JUnit
+     */
+    @Override
+    public void testPlanExecutionStarted(TestPlan testPlan) {
+        User user = loginService.login();
+        if(user == null) {
+            skipExecution = true;
+            return;
+        }
+        try {
+            tests = collectAllTests(testPlan);
+            testRun = eventService.testPlanStarted(tests, user);
+        } catch (SnitcherException e) {
+            skipExecution = true;
+        }
+    }
+
+    @Override
+    public void executionStarted(TestIdentifier testIdentifier) {
+        if (skipExecution|| testIdentifier.isContainer()) return;
+
+        TestModel testModel = tests.get(getUniqueId(testIdentifier));
+        testModel.setStatus(Status.RUNNING);
+        try {
+            eventService.testStarted(testModel, testRun.getId());
+        } catch (SnitcherException e) {
+            LOG.error("Error sending test started event", e);
+        }
+    }
+
+    @Override
+    public void executionSkipped(TestIdentifier testIdentifier, String reason) {
+
+        if (skipExecution) return;
+
+        TestModel testModel = tests.get(getUniqueId(testIdentifier));
+        try {
+            if (reason.endsWith("is @Disabled")) {
+                eventService.testDisabled(testModel, testRun.getId());
+            }
+        } catch (SnitcherException e) {
+            LOG.error("Error sending test started event", e);
+        }
+    }
+
+    @Override
+    public void executionFinished(TestIdentifier testIdentifier, TestExecutionResult testExecutionResult) {
+        if (skipExecution || testIdentifier.isContainer()) return;
+
+        TestModel test = tests.get(getUniqueId(testIdentifier));
+        test.setStatus(Status.FINISHED);
+
+        if (testExecutionResult.getStatus() == TestExecutionResult.Status.SUCCESSFUL) {
+            test.setOutcome(Outcome.PASSED);
+        } else {
+            test.setOutcome(Outcome.FAILED);
+            testExecutionResult.getThrowable().ifPresent(t -> test.setError(getStackTrace(t)));
+        }
+
+        try {
+            eventService.testFinished(test, testRun.getId());
+        } catch (SnitcherException e) {
+            LOG.error("Error sending test finished event.", e);
+        }
+    }
+
+    @Override
+    public void testPlanExecutionFinished(TestPlan testPlan) {
+        if (skipExecution) return;
+
+        try {
+            eventService.testRunFinished(testRun.getId());
+        } catch (SnitcherException | IOException e) {
+            LOG.error("Error sending test run finished event.", e);
+        }
+
+    }
+
+    public void reportingEntryPublished(TestIdentifier testIdentifier, ReportEntry entry) {
+        if (skipExecution) return;
+
+        try {
+            TestModel test = tests.get(getUniqueId(testIdentifier));
+            eventService.testReported(testRun.getId(), test, entry);
+        } catch (SnitcherException e) {
+            LOG.error("Error sending test test report event.", e);
+        }
+    }
+
+    private static String getStackTrace(Throwable throwable) {
+        StringJoiner joiner = new StringJoiner("\n");
+        while (throwable != null) {
+            if (throwable.getMessage() != null) {
+                joiner.add(throwable.getMessage());
+            }
+            StackTraceElement[] elements = throwable.getStackTrace();
+            for (StackTraceElement element : elements) {
+                joiner.add(element.toString());
+            }
+
+            throwable = throwable.getCause();
+        }
+        return joiner.toString();
+    }
+
+    private String getUniqueId(TestIdentifier testIdentifier) {
+        MethodSource methodSource = (MethodSource) testIdentifier.getSource().get();
+        return methodSource.getClassName() + '#' + methodSource.getMethodName();
+    }
+
+    private Map<String, TestModel> collectAllTests(TestPlan testPlan) {
+        Map<String, TestModel> testModelList = new HashMap<>();
+
+        Set<TestIdentifier> roots = testPlan.getRoots();
+        for (TestIdentifier root : roots) {
+            Set<TestIdentifier> children = testPlan.getChildren(root.getUniqueId());
+            addTests(testModelList, children, testPlan);
+        }
+
+        return testModelList;
+    }
+
+    private void addTests(Map<String, TestModel> tests, Set<TestIdentifier> children, TestPlan testPlan) {
+        for (TestIdentifier testIdentifier : children) {
+            if (testIdentifier.getType() == TestDescriptor.Type.TEST) {
+                createTest(testIdentifier).ifPresent(testModel -> tests.put(testModel.getTestPath(), testModel));
+            } else if (testIdentifier.getType() == TestDescriptor.Type.CONTAINER) {
+                addTests(tests, testPlan.getChildren(testIdentifier), testPlan);
+            }
+        }
+    }
+
+    /**
+     * Will create a {@link TestModel} object only if the {@link TestIdentifier} is of
+     * type {@link org.junit.platform.engine.TestDescriptor.Type} and the source is of type {@link MethodSource}.
+     *
+     * @param testIdentifier the test identifier to create a TestModel from
+     * @return optional of TestModel
+     */
+    private Optional<TestModel> createTest(TestIdentifier testIdentifier) {
+        Optional<TestModel> optional = Optional.empty();
+        Optional<TestSource> source = testIdentifier.getSource();
+        if (source.isPresent() && source.get() instanceof MethodSource) {
+            TestModel testModel = new TestModel();
+            MethodSource methodSource = (MethodSource) source.get();
+            testModel.setTestName(methodSource.getMethodName());
+            testModel.setTestClass(methodSource.getClassName());
+            testModel.setTestPath(methodSource.getClassName() + '#' + methodSource.getMethodName());
+            optional = Optional.of(testModel);
+        }
+
+        return optional;
+    }
+}
