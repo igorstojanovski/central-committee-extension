@@ -53,7 +53,7 @@ public class CentralCommitteeListener implements TestExecutionListener {
      * @param loginService handles the login
      * @param eventService handles sending the events
      */
-    public CentralCommitteeListener(LoginService loginService, EventService eventService) {
+    CentralCommitteeListener(LoginService loginService, EventService eventService) {
         this.loginService = loginService;
         this.eventService = eventService;
     }
@@ -141,6 +141,7 @@ public class CentralCommitteeListener implements TestExecutionListener {
 
     }
 
+    @Override
     public void reportingEntryPublished(TestIdentifier testIdentifier, ReportEntry entry) {
         if (skipExecution) return;
 
@@ -169,7 +170,7 @@ public class CentralCommitteeListener implements TestExecutionListener {
     }
 
     private String getUniqueId(TestIdentifier testIdentifier) {
-        MethodSource methodSource = (MethodSource) testIdentifier.getSource().get();
+        MethodSource methodSource = (MethodSource) testIdentifier.getSource().orElseThrow();
         return methodSource.getClassName() + '#' + methodSource.getMethodName();
     }
 
