@@ -14,6 +14,7 @@ import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.StringJoiner;
 
@@ -37,7 +38,7 @@ public class BasicHttpClient implements WebClient {
         HttpURLConnection conn = getPostConnection(url, "application/x-www-form-urlencoded");
         try (OutputStream os = conn.getOutputStream();
              BufferedWriter writer = new BufferedWriter(
-                     new OutputStreamWriter(os, "UTF-8"))) {
+                     new OutputStreamWriter(os, StandardCharsets.UTF_8))) {
             writer.write(getPostDataString(form));
             writer.flush();
         }
@@ -57,7 +58,8 @@ public class BasicHttpClient implements WebClient {
 
         HttpURLConnection conn = getPostConnection(url, "application/json");
 
-        try (OutputStream os = conn.getOutputStream(); BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(os, "UTF-8"))) {
+        try (OutputStream os = conn.getOutputStream();
+             BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(os, StandardCharsets.UTF_8))) {
             writer.write(body);
             writer.flush();
         }
