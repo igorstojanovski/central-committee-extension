@@ -5,5 +5,6 @@ addons:
   sonarcloud:
     organization: "igorstojanovski-github"
 script:
-  - mvn test -B
+  - mvn verify -B -DskipITs=true
+  - mvn verify -B -DskipUTs=true
   - sonar-scanner
