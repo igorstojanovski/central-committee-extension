@@ -10,11 +10,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
-import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.StringJoiner;
 
@@ -98,7 +96,7 @@ public class BasicHttpClient implements WebClient {
         return response;
     }
 
-    private String getPostDataString(Map<String, String> params) throws UnsupportedEncodingException {
+    private String getPostDataString(Map<String, String> params) {
         StringJoiner result = new StringJoiner("&");
 
         for (Map.Entry<String, String> entry : params.entrySet()) {
