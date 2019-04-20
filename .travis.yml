@@ -4,3 +4,6 @@ jdk:
 addons:
   sonarcloud:
     organization: "igorstojanovski-github"
+script:
+  - mvn test -B
+  - sonar-scanner
