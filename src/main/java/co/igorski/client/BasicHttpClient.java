@@ -18,6 +18,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.StringJoiner;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
 /**
  * This implementation uses only Java native classes to implement the {@link WebClient} interface.
  */
@@ -38,7 +40,7 @@ public class BasicHttpClient implements WebClient {
         HttpURLConnection conn = getPostConnection(url, "application/x-www-form-urlencoded");
         try (OutputStream os = conn.getOutputStream();
              BufferedWriter writer = new BufferedWriter(
-                     new OutputStreamWriter(os, StandardCharsets.UTF_8))) {
+                     new OutputStreamWriter(os, UTF_8))) {
             writer.write(getPostDataString(form));
             writer.flush();
         }
@@ -59,7 +61,7 @@ public class BasicHttpClient implements WebClient {
         HttpURLConnection conn = getPostConnection(url, "application/json");
 
         try (OutputStream os = conn.getOutputStream();
-             BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(os, StandardCharsets.UTF_8))) {
+             BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(os, UTF_8))) {
             writer.write(body);
             writer.flush();
         }
@@ -88,7 +90,7 @@ public class BasicHttpClient implements WebClient {
                 result.write(buffer, 0, length);
             }
 
-            response = result.toString("UTF-8");
+            response = result.toString(UTF_8);
         } catch (IOException e) {
             LOG.error("Could not read response from server.", e);
         }
@@ -101,8 +103,8 @@ public class BasicHttpClient implements WebClient {
 
         for (Map.Entry<String, String> entry : params.entrySet()) {
 
-            result.add(URLEncoder.encode(entry.getKey(), "UTF-8") + "=" +
-                    URLEncoder.encode(entry.getValue(), "UTF-8"));
+            result.add(URLEncoder.encode(entry.getKey(), UTF_8) + "=" +
+                    URLEncoder.encode(entry.getValue(), UTF_8));
         }
 
         return result.toString();
